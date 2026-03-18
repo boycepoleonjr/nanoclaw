@@ -111,7 +111,6 @@ export async function run(_args: string[]): Promise<void> {
     'TELEGRAM_BOT_TOKEN',
     'SLACK_BOT_TOKEN',
     'SLACK_APP_TOKEN',
-    'DISCORD_BOT_TOKEN',
   ]);
 
   const channelAuth: Record<string, string> = {};
@@ -132,10 +131,6 @@ export async function run(_args: string[]): Promise<void> {
   ) {
     channelAuth.slack = 'configured';
   }
-  if (process.env.DISCORD_BOT_TOKEN || envVars.DISCORD_BOT_TOKEN) {
-    channelAuth.discord = 'configured';
-  }
-
   const configuredChannels = Object.keys(channelAuth);
   const anyChannelConfigured = configuredChannels.length > 0;
 
