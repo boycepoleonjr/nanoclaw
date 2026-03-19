@@ -245,6 +245,13 @@ export class WhatsAppChannel implements Channel {
               is_from_me: fromMe,
               is_bot_message: isBotMessage,
             });
+
+            // Send read receipt (blue ticks) for incoming messages
+            if (!fromMe && !isBotMessage) {
+              this.sock.readMessages([msg.key]).catch((err) => {
+                logger.debug({ err }, 'Failed to send read receipt');
+              });
+            }
           }
         } catch (err) {
           logger.error(
