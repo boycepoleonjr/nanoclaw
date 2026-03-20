@@ -246,9 +246,12 @@ export class WhatsAppChannel implements Channel {
               is_bot_message: isBotMessage,
             });
 
-            // Send read receipt (blue ticks) for incoming messages
+            // Send read receipt (blue ticks) for incoming messages.
+            // Use sendReceipts with 'read' directly instead of readMessages(),
+            // because readMessages() silently downgrades to 'read-self' when
+            // the WhatsApp account privacy setting has read receipts disabled.
             if (!fromMe && !isBotMessage) {
-              this.sock.readMessages([msg.key]).catch((err) => {
+              this.sock.sendReceipts([msg.key], 'read').catch((err) => {
                 logger.debug({ err }, 'Failed to send read receipt');
               });
             }
