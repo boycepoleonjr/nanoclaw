@@ -63,8 +63,16 @@ jobs:
             exit 0
           fi
 
-          # Validate build
-          npm ci
+          # Validate build (npm ci for speed/strictness; fall back to npm install if lock file drifted).
+          # If npm install updates the lock file, commit it so the repo stays in sync and future
+          # runs don't also fall back (self-healing — no human intervention needed for lock drift).
+          if ! npm ci; then
+            npm install
+            if ! git diff --quiet package-lock.json; then
+              git add package-lock.json
+              git commit -m "chore: update package-lock.json after merging upstream [skip ci]"
+            fi
+          fi
           if ! npm run build; then
             echo "::error::Build failed after merging upstream/main"
             git reset --hard "origin/main"
@@ -122,7 +130,15 @@ jobs:
               continue
             fi
 
-            npm ci
+            # npm ci for speed/strictness; fall back to npm install if skill branch lock file drifted.
+            # Commit any lock file changes so future runs don't repeat the fallback (self-healing).
+            if ! npm ci; then
+              npm install
+              if ! git diff --quiet package-lock.json; then
+                git add package-lock.json
+                git commit -m "chore: update package-lock.json for $BRANCH after main merge [skip ci]"
+              fi
+            fi
 
             if ! npm run build; then
               echo "::warning::Build failed for $BRANCH"
@@ -153,66 +169,56 @@ jobs:
 
       - name: Open issue for upstream sync failure
         if: steps.sync.outputs.sync_failed == 'true'
-        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            try {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: `Upstream sync failed — merge conflict or build failure`,
-                body: [
-                  'The automated sync with `qwibitai/nanoclaw` main failed.',
-                  '',
-                  'This usually means upstream made changes that conflict with this fork\'s channel code.',
-                  '',
-                  'To resolve manually:',
-                  '```bash',
-                  'git fetch upstream main',
-                  'git merge upstream/main',
-                  '# resolve conflicts',
-                  'npm run build && npm test',
-                  'git push',
-                  '```',
-                ].join('\n'),
-                labels: ['upstream-sync']
-              });
-            } catch (e) {
-              core.warning(`Could not create upstream-sync issue: ${e.message}`);
-            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Upstream sync failed — merge conflict or build failure`,
+              body: [
+                'The automated sync with `qwibitai/nanoclaw` main failed.',
+                '',
+                'This usually means upstream made changes that conflict with this fork\'s channel code.',
+                '',
+                'To resolve manually:',
+                '```bash',
+                'git fetch upstream main',
+                'git merge upstream/main',
+                '# resolve conflicts',
+                'npm run build && npm test',
+                'git push',
+                '```',
+              ].join('\n'),
+              labels: ['upstream-sync']
+            });
 
       - name: Open issue for failed skill merges
         if: steps.merge.outputs.failed != ''
-        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            try {
-              const failed = '${{ steps.merge.outputs.failed }}'.trim().split(/\s+/);
-              const body = [
-                `The merge-forward workflow failed to merge \`main\` into the following skill branches:`,
-                '',
-                ...failed.map(s => `- \`skill/${s}\`: merge conflict, build failure, or test failure`),
-                '',
-                'Please resolve manually:',
-                '```bash',
-                ...failed.map(s => [
-                  `git checkout skill/${s}`,
-                  `git merge main`,
-                  `# resolve conflicts, then: git push`,
-                  ''
-                ]).flat(),
-                '```',
-              ].join('\n');
+            const failed = '${{ steps.merge.outputs.failed }}'.trim().split(/\s+/);
+            const body = [
+              `The merge-forward workflow failed to merge \`main\` into the following skill branches:`,
+              '',
+              ...failed.map(s => `- \`skill/${s}\`: merge conflict, build failure, or test failure`),
+              '',
+              'Please resolve manually:',
+              '```bash',
+              ...failed.map(s => [
+                `git checkout skill/${s}`,
+                `git merge main`,
+                `# resolve conflicts, then: git push`,
+                ''
+              ]).flat(),
+              '```',
+            ].join('\n');
 
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: `Merge-forward failed for ${failed.length} skill branch(es)`,
-                body,
-                labels: ['skill-maintenance']
-              });
-            } catch (e) {
-              core.warning(`Could not create skill-maintenance issue: ${e.message}`);
-            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Merge-forward failed for ${failed.length} skill branch(es)`,
+              body,
+              labels: ['skill-maintenance']
+            });
