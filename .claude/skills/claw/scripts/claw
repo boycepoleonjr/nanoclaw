@@ -121,9 +121,15 @@ def find_group(groups: list[dict], query: str) -> dict | None:
     return None
 
 
-def run_container(runtime: str, image: str, payload: dict, timeout: int = 300) -> None:
-    cmd = [runtime, "run", "-i", "--rm", image]
-    dbg(f"cmd: {' '.join(cmd)}")
+def run_container(runtime: str, image: str, payload: dict, secrets: dict, timeout: int = 300) -> None:
+    cmd = [runtime, "run", "-i", "--rm"]
+    # Inject secrets as container environment variables so the agent runtime
+    # can read them (e.g. ANTHROPIC_API_KEY).  They are also kept in the JSON
+    # payload for backwards-compat with any code that reads payload["secrets"].
+    for key, val in secrets.items():
+        cmd += ["-e", f"{key}={val}"]
+    cmd.append(image)
+    dbg(f"cmd: {runtime} run -i --rm [-e …×{len(secrets)}] {image}")
 
     # Show payload sans secrets
     if VERBOSE:
@@ -215,7 +221,10 @@ def run_container(runtime: str, image: str, payload: dict, timeout: int = 300) -
         # No structured output — print raw stdout
         print(stdout)
 
-    if proc.returncode not in (0, None):
+    # If the sentinel was received we deliberately killed the container (SIGKILL)
+    # to avoid the Node.js event loop keeping it alive.  That intentional kill
+    # yields returncode == -9, which is NOT an error — skip the exit-code check.
+    if not done.is_set() and proc.returncode not in (0, None):
         sys.exit(proc.returncode)
 
 
@@ -311,7 +320,7 @@ def main():
         payload["resumeAt"] = "latest"
 
     print(f"[{group_name or jid}] running via {runtime}...", file=sys.stderr)
-    run_container(runtime, args.image, payload, timeout=args.timeout)
+    run_container(runtime, args.image, payload, secrets=secrets, timeout=args.timeout)
 
 
 if __name__ == "__main__":
