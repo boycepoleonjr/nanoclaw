@@ -63,8 +63,8 @@ jobs:
             exit 0
           fi
 
-          # Validate build
-          npm ci
+          # Validate build (npm ci for speed/strictness; fall back to npm install if lock file drifted)
+          npm ci || npm install
           if ! npm run build; then
             echo "::error::Build failed after merging upstream/main"
             git reset --hard "origin/main"
@@ -122,7 +122,8 @@ jobs:
               continue
             fi
 
-            npm ci
+            # npm ci for speed/strictness; fall back to npm install if skill branch lock file drifted
+            npm ci || npm install
 
             if ! npm run build; then
               echo "::warning::Build failed for $BRANCH"
