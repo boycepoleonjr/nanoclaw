@@ -172,6 +172,18 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Deduplicate: skip if an open upstream-sync issue already exists
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'upstream-sync',
+              state: 'open',
+              per_page: 1,
+            });
+            if (existing.length > 0) {
+              console.log(`Open upstream-sync issue already exists: #${existing[0].number} — skipping duplicate.`);
+              return;
+            }
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -199,6 +211,21 @@ jobs:
         with:
           script: |
             const failed = '${{ steps.merge.outputs.failed }}'.trim().split(/\s+/);
+
+            // Deduplicate: skip if an open skill-maintenance issue already exists for the same set
+            const title = `Merge-forward failed for ${failed.length} skill branch(es)`;
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'skill-maintenance',
+              state: 'open',
+              per_page: 1,
+            });
+            if (existing.length > 0) {
+              console.log(`Open skill-maintenance issue already exists: #${existing[0].number} — skipping duplicate.`);
+              return;
+            }
+
             const body = [
               `The merge-forward workflow failed to merge \`main\` into the following skill branches:`,
               '',
@@ -218,7 +245,7 @@ jobs:
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `Merge-forward failed for ${failed.length} skill branch(es)`,
+              title,
               body,
               labels: ['skill-maintenance']
             });
