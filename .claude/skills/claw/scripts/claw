@@ -129,7 +129,18 @@ def run_container(runtime: str, image: str, payload: dict, timeout: int = 300) -
     for key, val in payload.get("secrets", {}).items():
         cmd += ["-e", f"{key}={val}"]
     cmd.append(image)
-    dbg(f"cmd: {' '.join(cmd)}")
+    # Redact -e KEY=VAL flags before debug-logging to avoid leaking credentials
+    # into terminal history or CI logs when --verbose is active.
+    if VERBOSE:
+        safe_parts, prev_was_e = [], False
+        for token in cmd:
+            if prev_was_e and "=" in token:
+                safe_parts.append(token.split("=", 1)[0] + "=***")
+                prev_was_e = False
+            else:
+                prev_was_e = (token == "-e")
+                safe_parts.append(token)
+        dbg(f"cmd: {' '.join(safe_parts)}")
 
     # Show payload sans secrets
     if VERBOSE:
