@@ -122,7 +122,13 @@ def find_group(groups: list[dict], query: str) -> dict | None:
 
 
 def run_container(runtime: str, image: str, payload: dict, timeout: int = 300) -> None:
-    cmd = [runtime, "run", "-i", "--rm", image]
+    # Inject secrets as -e KEY=VAL flags so the agent runtime can read them
+    # from the environment (e.g. ANTHROPIC_API_KEY). The JSON payload field is
+    # kept for backwards compatibility but is not sufficient on its own.
+    cmd = [runtime, "run", "-i", "--rm"]
+    for key, val in payload.get("secrets", {}).items():
+        cmd += ["-e", f"{key}={val}"]
+    cmd.append(image)
     dbg(f"cmd: {' '.join(cmd)}")
 
     # Show payload sans secrets
@@ -215,7 +221,11 @@ def run_container(runtime: str, image: str, payload: dict, timeout: int = 300) -
         # No structured output — print raw stdout
         print(stdout)
 
-    if proc.returncode not in (0, None):
+    # Only propagate a bad exit code when the sentinel was NOT received.
+    # If done is set, the container was intentionally killed with SIGKILL after
+    # the sentinel, so returncode == -9 is expected and should not be treated
+    # as an error.
+    if not done.is_set() and proc.returncode not in (0, None):
         sys.exit(proc.returncode)
 
 
